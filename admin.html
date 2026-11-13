@@ -258,6 +258,7 @@ body{font-size:14px;min-height:100vh}
 .login label{display:grid;gap:6px;font-weight:700}
 .login .field{font-size:16px;padding:10px 12px;border-radius:10px;width:100%}
 .login .btn{justify-content:center;padding:11px 18px;font-size:15px}
+.login .linfo{background:var(--accent-soft);border-left:3px solid var(--brand);border-radius:8px;padding:10px 12px;color:var(--fg);font-size:13.5px}
 .setup{background:var(--warn-soft);border-radius:10px;padding:12px 14px}
 .setup code{font-family:var(--f-mono)}
 /* Passwort ändern */
@@ -297,6 +298,8 @@ body{font-size:14px;min-height:100vh}
     <label for="lPass">Passwort<input class="field" type="password" id="lPass" autocomplete="current-password" required></label>
     <div class="err" id="lErr" role="alert"></div>
     <button class="btn primary" type="submit" id="lBtn">Anmelden</button>
+    <button type="button" class="linkbtn" id="lForgot" style="justify-self:center;font-size:13.5px">Passwort vergessen?</button>
+    <p class="linfo" id="lInfo" role="status" hidden></p>
   </form>
 </section>
 
@@ -1066,17 +1069,18 @@ async function enterApp(session){
   try{
     const {data:me}=await S.sb.from("admins").select("passwort_geaendert,mail_bei_neu").eq("user_id",session.user.id).maybeSingle();
     if(me && me.mail_bei_neu===false) S.me.mailNeu=false;
-    if(me && me.passwort_geaendert===false) openPw(true);
+    if(S.recovery){ S.recovery=false; openPw(true,true); }
+    else if(me && me.passwort_geaendert===false) openPw(true);
   }catch(_){}
 }
 // ---------- Passwort ändern ----------
 function closePw(){ const r=$("#pwRoot"); if(r) r.remove(); }
-function openPw(forced){
+function openPw(forced,recovery){
   closePw();
   const d=document.createElement("div"); d.id="pwRoot"; d.className="pwbox";
   d.innerHTML='<form class="login" id="pwForm" novalidate role="dialog" aria-modal="true" aria-labelledby="pwT">'+
-    '<h2 id="pwT">'+(forced?"Bitte eigenes Passwort festlegen":"Passwort ändern")+'</h2>'+
-    (forced?'<p>Du hast dich mit einem Startpasswort angemeldet. Lege jetzt ein eigenes Passwort fest, das nur du kennst.</p>':'')+
+    '<h2 id="pwT">'+(recovery?"Neues Passwort festlegen":forced?"Bitte eigenes Passwort festlegen":"Passwort ändern")+'</h2>'+
+    (recovery?'<p>Du hast den Link aus der E-Mail geöffnet. Lege jetzt dein neues Passwort fest.</p>':forced?'<p>Du hast dich mit einem Startpasswort angemeldet. Lege jetzt ein eigenes Passwort fest, das nur du kennst.</p>':'')+
     '<label for="pw1">Neues Passwort<input class="field" type="password" id="pw1" autocomplete="new-password" minlength="10" required></label>'+
     '<p class="hint">Mindestens 10 Zeichen, mit Buchstaben und Ziffern.</p>'+
     '<label for="pw2">Neues Passwort wiederholen<input class="field" type="password" id="pw2" autocomplete="new-password" required></label>'+
@@ -1106,6 +1110,19 @@ function openPw(forced){
   const cancel=$("#pwCancel"); if(cancel) cancel.addEventListener("click",closePw);
 }
 $("#btnPw").addEventListener("click",()=>openPw(false));
+function resetUrl(){ return location.protocol==="https:" ? location.origin+location.pathname : APP_URL+"admin.html"; }
+$("#lForgot").addEventListener("click",async()=>{
+  const email=$("#lEmail").value.trim().toLowerCase(), info=$("#lInfo");
+  $("#lErr").textContent=""; info.hidden=true;
+  if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)){ $("#lErr").textContent="Bitte oben zuerst deine E-Mail-Adresse eintragen, dann auf „Passwort vergessen?“ klicken."; $("#lEmail").focus(); return; }
+  if(!S.sb) return;
+  const b=$("#lForgot"); b.disabled=true;
+  const {error}=await S.sb.auth.resetPasswordForEmail(email,{redirectTo:resetUrl()});
+  b.disabled=false;
+  if(error&&!/rate|seconds|too many/i.test(error.message||"")){ $("#lErr").textContent=errMsg(error); return; }
+  info.hidden=false;
+  info.textContent=error?"Es wurde gerade schon eine E-Mail angefordert. Bitte kurz warten und im Posteingang nachsehen.":"Falls "+email+" freigeschaltet ist, kommt in wenigen Minuten eine E-Mail mit einem Link. Link antippen, neues Passwort festlegen – fertig. Bitte auch im Spam-Ordner nachsehen.";
+});
 
 // ---------- Team ----------
 async function loadTeam(){
@@ -1264,9 +1281,15 @@ document.addEventListener("visibilitychange",()=>{ if(document.visibilityState==
 (async function boot(){
   const ok=/^https:\/\//.test(SUPABASE_URL)&&SUPABASE_KEY&&!/HIER_/.test(SUPABASE_KEY);
   if(!ok||!window.supabase){ $("#setupNote").hidden=false; showLogin(window.supabase?"":"Die Supabase-Bibliothek konnte nicht geladen werden. Internetverbindung prüfen."); return; }
-  S.sb=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
+  const h=location.hash||"";
+  S.recovery=/type=recovery/.test(h);
+  const linkFehler=/error_code=/.test(h);
+  S.sb=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY,{auth:{flowType:"implicit",detectSessionInUrl:true,persistSession:true}});
+  S.sb.auth.onAuthStateChange(ev=>{ if(ev==="PASSWORD_RECOVERY") S.recovery=true; });
   const {data}=await S.sb.auth.getSession();
-  if(data&&data.session) enterApp(data.session); else showLogin();
+  if(linkFehler){ history.replaceState(null,"",location.pathname); }
+  if(data&&data.session) enterApp(data.session);
+  else showLogin(linkFehler?"Der Link ist abgelaufen oder wurde schon benutzt. Bitte E-Mail eintragen und erneut auf „Passwort vergessen?“ klicken.":"");
 })();
 })();
 </script>
