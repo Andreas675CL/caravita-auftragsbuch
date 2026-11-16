@@ -95,6 +95,18 @@ legend{font-weight:700;font-size:14px;padding:0;margin-bottom:6px}
 .done p{margin:0;color:var(--muted);max-width:52ch}
 .foot{color:var(--muted);font-size:12.5px;text-align:center}
 .privacy{font-size:12.5px;color:var(--muted);border-left:3px solid var(--brand);padding-left:10px}
+.files{display:grid;gap:8px}
+.files .flbl{font-weight:700;font-size:14px}
+.files .flbl .opt{font-weight:400;color:var(--muted)}
+.fpick{display:inline-flex;align-items:center;gap:8px;justify-self:start;border:1px dashed var(--accent);color:var(--accent);background:var(--accent-soft);border-radius:999px;padding:9px 16px;font-weight:700;font-size:14px;cursor:pointer}
+.fpick:hover{filter:brightness(1.04)}
+.fpick:focus-within{outline:2px solid var(--brand);outline-offset:2px}
+.fpick input{position:absolute;width:1px;height:1px;opacity:0}
+.flist{list-style:none;margin:0;padding:0;display:grid;gap:6px}
+.flist li{display:flex;align-items:center;gap:10px;border:1px solid var(--line);border-radius:10px;padding:7px 10px;font-size:14px;min-width:0}
+.flist .fn{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.flist .fs{color:var(--muted);font-size:12.5px;white-space:nowrap}
+.flist button{border:none;background:none;color:var(--crit);font-size:20px;line-height:1;cursor:pointer;padding:0 4px}
 </style>
 </head>
 <body>
@@ -139,7 +151,14 @@ legend{font-weight:700;font-size:14px;padding:0;margin-bottom:6px}
       </div>
     </fieldset>
 
-    <p class="privacy">Bitte keine Patientendaten eintragen (Namen mit Diagnosen, Gesundheitsangaben).</p>
+    <div class="files">
+      <span class="flbl">Dateien <span class="opt">(optional)</span></span>
+      <label class="fpick" for="dateien"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5 12.5 20a5.5 5.5 0 0 1-7.8-7.8l8.5-8.5a3.7 3.7 0 0 1 5.2 5.2l-8.5 8.5a1.8 1.8 0 0 1-2.6-2.6l7.8-7.8"/></svg>Foto oder Dokument anhängen<input type="file" id="dateien" multiple accept="image/*,.heic,.heif,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv"></label>
+      <ul class="flist" id="flist"></ul>
+      <span class="hint">Bis zu 5 Dateien, je höchstens 10 MB (Fotos, PDF, Word, Excel).</span>
+    </div>
+
+    <p class="privacy">Bitte keine Patientendaten eintragen oder anhängen (Namen mit Diagnosen, Gesundheitsangaben, Fotos von Patientenunterlagen).</p>
 
     <div class="err" id="err" role="alert"></div>
     <div class="actions">
@@ -177,6 +196,47 @@ $("#email").value = get("cv.email");
 $("#standort").value = get("cv.standort");
 
 const emailOk = v => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v);
+
+// ---------- Dateien ----------
+const MAX_FILES = 5, MAX_SIZE = 10*1024*1024;
+const EXT_TYP = {jpg:"image/jpeg",jpeg:"image/jpeg",png:"image/png",heic:"image/heic",heif:"image/heif",webp:"image/webp",gif:"image/gif",pdf:"application/pdf",txt:"text/plain",csv:"text/csv",
+  doc:"application/msword",docx:"application/vnd.openxmlformats-officedocument.wordprocessingml.document",xls:"application/vnd.ms-excel",
+  xlsx:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",ppt:"application/vnd.ms-powerpoint",pptx:"application/vnd.openxmlformats-officedocument.presentationml.presentation"};
+let files = [];
+const typOf = f => { const ext=(f.name.split(".").pop()||"").toLowerCase(); return EXT_TYP[ext] || (Object.values(EXT_TYP).includes(f.type) ? f.type : ""); };
+const fmtSize = n => n<1024*1024 ? Math.max(1,Math.round(n/1024))+" KB" : (n/1024/1024).toFixed(1).replace(".",",")+" MB";
+const escH = t => String(t).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+function renderFiles(){
+  $("#flist").innerHTML = files.map((f,i)=>'<li><span class="fn">'+escH(f.name)+'</span><span class="fs">'+fmtSize(f.size)+'</span><button type="button" data-rm="'+i+'" aria-label="'+escH(f.name)+' entfernen">×</button></li>').join("");
+}
+$("#dateien").addEventListener("change", e=>{
+  $("#err").textContent = "";
+  const msgs = [];
+  for(const f of e.target.files){
+    if(files.length >= MAX_FILES){ msgs.push("Höchstens "+MAX_FILES+" Dateien."); break; }
+    if(!typOf(f)){ msgs.push(f.name+": Dateityp nicht erlaubt."); continue; }
+    if(f.size > MAX_SIZE){ msgs.push(f.name+": größer als 10 MB."); continue; }
+    files.push(f);
+  }
+  e.target.value = ""; renderFiles();
+  if(msgs.length) $("#err").textContent = msgs.join(" ");
+});
+$("#flist").addEventListener("click", e=>{ const b=e.target.closest("[data-rm]"); if(b){ files.splice(+b.dataset.rm,1); renderFiles(); } });
+async function uploadFiles(nr, email){
+  let ok = 0;
+  for(const f of files){
+    const safe = f.name.normalize("NFKD").replace(/[^\w.\-]+/g,"_").replace(/_+/g,"_").slice(-80) || "datei";
+    const pfad = nr+"/"+(crypto.randomUUID ? crypto.randomUUID() : Date.now()+"-"+Math.random().toString(36).slice(2))+"-"+safe;
+    try{
+      const up = await sb.storage.from("anhaenge").upload(pfad, f, {contentType: typOf(f), upsert:false});
+      if(up.error) throw up.error;
+      const r = await sb.rpc("anhang_melden", {p_nr:nr, p_pfad:pfad, p_name:f.name.slice(0,200), p_groesse:f.size, p_typ:typOf(f), p_email:email});
+      if(r.error) throw r.error;
+      ok++;
+    }catch(_){ /* zählt als fehlgeschlagen */ }
+  }
+  return ok;
+}
 function fieldErr(el, msg){ el.setAttribute("aria-invalid","true"); $("#err").textContent = msg; el.focus(); }
 ["#email","#titel","#standort"].forEach(s=>{ const el=$(s); ["input","change"].forEach(ev=>el.addEventListener(ev,()=>el.removeAttribute("aria-invalid"))); });
 
@@ -201,9 +261,15 @@ $("#form").addEventListener("submit", async e=>{
     });
     if(error) throw error;
     put("cv.email", email); put("cv.standort", standort);
+    let dateiInfo = "";
+    if(files.length){
+      btn.textContent = "Dateien werden hochgeladen …";
+      const n = files.length, ok = await uploadFiles(data, email);
+      dateiInfo = ok===n ? " "+(n===1?"Die Datei wurde":"Alle "+n+" Dateien wurden")+" mitgeschickt." : " Achtung: "+(n-ok)+" von "+n+" Dateien konnten nicht hochgeladen werden – bitte per E-Mail nachreichen.";
+    }
     document.querySelectorAll('[aria-invalid]').forEach(el=>el.removeAttribute("aria-invalid"));
     $("#doneNr").textContent = data;
-    $("#doneTxt").textContent = "Wir melden uns an " + email + ". Bitte geben Sie bei Rückfragen die Auftragsnummer an.";
+    $("#doneTxt").textContent = "Sie erhalten gleich eine Bestätigung an " + email + " und weitere Nachrichten, wenn der Auftrag bearbeitet und erledigt ist." + dateiInfo;
     $("#form").hidden = true; $("#done").hidden = false; $("#again").focus();
   }catch(err){
     const m = err && err.message || "";
@@ -216,7 +282,7 @@ $("#form").addEventListener("submit", async e=>{
 });
 
 $("#again").addEventListener("click", ()=>{
-  $("#titel").value = ""; $("#beschreibung").value = ""; $("#kategorie").value = "";
+  $("#titel").value = ""; $("#beschreibung").value = ""; $("#kategorie").value = ""; files = []; renderFiles();
   $("#p-normal").checked = true;
   $("#done").hidden = true; $("#form").hidden = false; $("#titel").focus();
 });

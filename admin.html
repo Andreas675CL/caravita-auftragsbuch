@@ -285,6 +285,15 @@ body{font-size:14px;min-height:100vh}
 .pstate.on .dot{background:var(--brand)}
 .pinfo{font-size:13px;color:var(--muted);margin:0}
 .lbl-hint{font-weight:400;font-size:11.5px;color:var(--muted)}
+.alist{list-style:none;margin:0 0 8px;padding:0;display:grid;gap:6px}
+.alist li{display:flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:10px;padding:7px 10px;font-size:13px;flex-wrap:wrap}
+.alist .an{flex:1;min-width:140px;overflow-wrap:anywhere}
+.alist .an small{display:block;color:var(--muted);font-size:11.5px}
+.alist .muted{color:var(--muted);border-style:dashed}
+.fpick{display:inline-flex;align-items:center;gap:8px;border:1px dashed var(--accent);color:var(--accent);background:var(--accent-soft);border-radius:999px;padding:7px 14px;font-weight:700;font-size:13px;cursor:pointer;position:relative}
+.fpick:focus-within{outline:2px solid var(--brand);outline-offset:2px}
+.fpick input{position:absolute;width:1px;height:1px;opacity:0}
+.ahint{margin:6px 0 0;font-size:12px;color:var(--muted)}
 </style>
 </head>
 <body>
@@ -366,7 +375,7 @@ const NEXT_L = {eingang:"Starten", in_arbeit:"Fertigmelden", wartend:"Fortsetzen
 // ---------- Zustand ----------
 const S = {
   tickets: [], loaded:false, sb:null, canWrite:true, downloads:true,
-  user:null, me:{id:null,name:"",mailNeu:true}, names:{}, team:[],
+  user:null, me:{id:null,name:"",mailNeu:true,erinnerung:true}, names:{}, team:[], anhCount:{},
   view:"board", sort:{k:"eingang",d:"desc"},
   f:{q:"",person:"",cat:"",prio:"",standort:"",status:"offen",mine:false},
   open:null, // {id|null, dirty}
@@ -509,7 +518,7 @@ function cardHtml(t){
   return '<article class="card" tabindex="0" data-id="'+esc(t.id)+'" '+(S.canWrite!==false&&t.status!=="storniert"?'draggable="true"':'')+'>'+
     '<div class="r1"><span class="nr">'+esc(t.nr||"")+'</span>'+prioChip(t.prioritaet)+(over?'<span class="chip over">überfällig</span>':'')+(t.beispiel?'<span class="chip ex">Beispiel</span>':'')+'</div>'+
     '<div class="t">'+esc(t.titel||"(ohne Titel)")+'</div>'+
-    '<div class="meta">'+(t.kunde?'<span>'+esc(t.kunde)+'</span>':'')+(t.standort?'<span>⌂ '+esc(t.standort)+'</span>':'')+(t.email?'<span title="'+esc(t.email)+'">✉ '+esc(t.email.split("@")[0])+'</span>':'')+(t.verantwortlich?'<span title="Verantwortlich">◷ '+esc(t.verantwortlich)+'</span>':'')+due+'</div>'+
+    '<div class="meta">'+(t.kunde?'<span>'+esc(t.kunde)+'</span>':'')+(t.standort?'<span>⌂ '+esc(t.standort)+'</span>':'')+(t.email?'<span title="'+esc(t.email)+'">✉ '+esc(t.email.split("@")[0])+'</span>':'')+(S.anhCount[t.id]?'<span title="Anhänge">📎 '+S.anhCount[t.id]+'</span>':'')+(t.verantwortlich?'<span title="Verantwortlich">◷ '+esc(t.verantwortlich)+'</span>':'')+due+'</div>'+
     '<div class="foot"><span class="meta">'+esc(timeInfo)+'</span>'+(canNext?'<button class="btn small" type="button" data-next="'+esc(t.id)+'">'+NEXT_L[t.status]+' →</button>':'')+'</div>'+
   '</article>';
 }
@@ -794,7 +803,7 @@ function openDrawer(id){
       (t.beispiel?'<div class="notice">Dies ist ein Beispielauftrag.</div>':'')+
       '<div id="drConflict" hidden></div>'+
       '<div><h3 class="sec-h">Status</h3><div class="seg-status" id="stSeg">'+statusBtns+'</div>'+
-        '<label style="display:grid;gap:4px;margin-top:8px;font-size:12px;color:var(--muted)">Notiz zur Statusänderung (optional)<input class="field" id="tNote" placeholder="z. B. wartet auf Ersatzteil"'+dis+'></label></div>'+
+        '<label style="display:grid;gap:4px;margin-top:8px;font-size:12px;color:var(--muted)">Notiz zur Statusänderung (optional) – bei „In Bearbeitung“ und „Erledigt“ geht sie per E-Mail an die meldende Person<input class="field" id="tNote" placeholder="z. B. Gerät getauscht, bitte testen"'+dis+'></label></div>'+
       (!isNew&&t.email&&!ro?replyHtml(t):'')+
       '<div class="form">'+
         '<label class="full">Auftrag / Bezeichnung *<input class="field" id="tTitel" required value="'+esc(t.titel||"")+'"'+dis+'></label>'+
@@ -810,12 +819,13 @@ function openDrawer(id){
         '<label>Aufwand Ist (Std)<input class="field num" type="number" min="0" step="0.25" id="tIst" value="'+(t.istStd??"")+'"'+dis+'></label>'+
         '<label>Auftragswert netto (€)<input class="field num" type="number" min="0" step="1" id="tWert" value="'+(t.wert??"")+'"'+dis+'></label>'+
         '<label class="full">Beschreibung<textarea class="field" id="tDesc" placeholder="Was ist zu tun? Bitte keine Patientendaten wie Diagnosen oder Gesundheitsangaben eintragen."'+dis+'>'+esc(t.beschreibung||"")+'</textarea></label>'+
-      '</div>'+facts+hist+
+      '</div>'+(isNew?'':anhSection(ro))+facts+hist+
       '<div class="err" id="tErr" role="alert"></div>'+
     '</form>'+
     '<div class="dr-f" id="drFoot">'+footHtml(isNew,ro)+'</div>'+
   '</aside>';
   setTimeout(()=>{ const f=$("#tTitel"); if(f&&isNew) f.focus(); else { const x=$(".drawer .x"); x&&x.focus(); } },30);
+  if(!isNew) loadAnh(t.id);
 }
 function meInTeam(){ const e=(S.me.id||"").toLowerCase(); return S.team.some(p=>p.aktiv&&p.email===e); }
 function personOptions(t){
@@ -831,6 +841,61 @@ function personFromSelect(o){
   if(!v) return {verantwortlich:"",verantwortlichEmail:null};
   const p=S.team.find(x=>x.email===v);
   return {verantwortlich:p?p.name:v,verantwortlichEmail:v};
+}
+// ---------- Anhänge ----------
+const A_TYP={jpg:"image/jpeg",jpeg:"image/jpeg",png:"image/png",heic:"image/heic",heif:"image/heif",webp:"image/webp",gif:"image/gif",pdf:"application/pdf",txt:"text/plain",csv:"text/csv",
+  doc:"application/msword",docx:"application/vnd.openxmlformats-officedocument.wordprocessingml.document",xls:"application/vnd.ms-excel",
+  xlsx:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",ppt:"application/vnd.ms-powerpoint",pptx:"application/vnd.openxmlformats-officedocument.presentationml.presentation"};
+const aTyp=f=>{ const e=(f.name.split(".").pop()||"").toLowerCase(); return A_TYP[e]||(Object.values(A_TYP).includes(f.type)?f.type:""); };
+const aSize=n=>n<1048576?Math.max(1,Math.round(n/1024))+" KB":(n/1048576).toFixed(1).replace(".",",")+" MB";
+function anhSection(ro){
+  return '<div><h3 class="sec-h">Anhänge</h3><ul class="alist" id="aList"><li class="muted">Wird geladen …</li></ul>'+
+    (ro?'':'<label class="fpick"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5 12.5 20a5.5 5.5 0 0 1-7.8-7.8l8.5-8.5a3.7 3.7 0 0 1 5.2 5.2l-8.5 8.5a1.8 1.8 0 0 1-2.6-2.6l7.8-7.8"/></svg>Datei anhängen<input type="file" id="aFile" multiple accept="image/*,.heic,.heif,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv"></label>'+
+    '<p class="ahint">Was du hier anhängst, geht bei „Erledigt“ automatisch als Anhang an die meldende Person (bis 10 MB). Keine Patientendaten.</p>')+'</div>';
+}
+async function loadAnh(id){
+  const ul=$("#aList"); if(!ul) return;
+  const {data,error}=await S.sb.from("anhaenge").select("id,pfad,name,groesse,von,angelegt_am").eq("auftrag_id",id).order("angelegt_am");
+  if(!S.open||S.open.id!==id||!$("#aList")) return;
+  if(error){ ul.innerHTML='<li class="muted">Anhänge konnten nicht geladen werden.</li>'; return; }
+  S.anhCount[id]=data.length;
+  ul.innerHTML=data.length?data.map(a=>'<li><span class="an">'+esc(a.name)+'<small>'+aSize(a.groesse)+' · '+(who(a.von)==="dir"?"von dir":"von "+esc(who(a.von)||a.von))+' · '+fDT(a.angelegt_am)+'</small></span>'+
+    '<button type="button" class="btn small" data-aopen="'+esc(a.pfad)+'" data-aname="'+esc(a.name)+'">Öffnen</button>'+
+    (S.canWrite===false?'':'<button type="button" class="btn small danger" data-adel="'+esc(a.id)+'" data-apfad="'+esc(a.pfad)+'">Löschen</button>')+'</li>').join("")
+    :'<li class="muted">Keine Anhänge.</li>';
+}
+async function uploadAnh(fileList){
+  const o=S.open, t=o&&S.tickets.find(x=>x.id===o.id); if(!t) return;
+  let ok=0; const msgs=[];
+  for(const f of fileList){
+    if(!aTyp(f)){ msgs.push(f.name+": Dateityp nicht erlaubt"); continue; }
+    if(f.size>10485760){ msgs.push(f.name+": größer als 10 MB"); continue; }
+    const safe=f.name.normalize("NFKD").replace(/[^\w.\-]+/g,"_").replace(/_+/g,"_").slice(-80)||"datei";
+    const pfad=t.nr+"/"+(crypto.randomUUID?crypto.randomUUID():Date.now()+"-"+Math.random().toString(36).slice(2))+"-"+safe;
+    const up=await S.sb.storage.from("anhaenge").upload(pfad,f,{contentType:aTyp(f),upsert:false});
+    if(up.error){ msgs.push(f.name+": Hochladen fehlgeschlagen"); continue; }
+    const {error}=await S.sb.from("anhaenge").insert({auftrag_id:t.id,pfad,name:f.name.slice(0,200),groesse:f.size,typ:aTyp(f),von:S.me.id||""});
+    if(error){ await S.sb.storage.from("anhaenge").remove([pfad]); msgs.push(f.name+": "+errMsg(error)); continue; }
+    ok++;
+  }
+  if(ok) toast(ok===1?"Datei angehängt":ok+" Dateien angehängt");
+  if(msgs.length) toast(msgs.join(" · "));
+  await loadAnh(t.id); render();
+}
+async function openAnh(pfad,name){
+  const w=window.open("","_blank");
+  const {data,error}=await S.sb.storage.from("anhaenge").createSignedUrl(pfad,300);
+  if(error||!data){ if(w) w.close(); toast("Datei konnte nicht geöffnet werden"); return; }
+  if(w) w.location.href=data.signedUrl; else location.href=data.signedUrl;
+}
+async function deleteAnh(id,pfad){
+  const rm=await S.sb.storage.from("anhaenge").remove([pfad]);
+  if(rm.error){ toast("Löschen fehlgeschlagen"); return; }
+  await S.sb.from("anhaenge").delete().eq("id",id);
+  toast("Anhang gelöscht"); if(S.open) await loadAnh(S.open.id); render();
+}
+async function loadAnhCounts(){
+  try{ const {data}=await S.sb.from("anhaenge").select("auftrag_id"); S.anhCount={}; (data||[]).forEach(r=>{ S.anhCount[r.auftrag_id]=(S.anhCount[r.auftrag_id]||0)+1; }); }catch(_){}
 }
 function footHtml(isNew,ro){
   if(ro) return '<span class="sp"></span><button class="btn" type="button" data-close>Schließen</button>';
@@ -930,7 +995,8 @@ async function saveDrawer(){
 async function deleteOpen(){
   const o=S.open; if(!o||!o.id) return;
   const t=S.tickets.find(x=>x.id===o.id);
-  try{ const {error}=await S.sb.from("auftraege").delete().eq("id",o.id); if(error) throw error; S.tickets=S.tickets.filter(x=>x.id!==o.id); afterData(); toast((t?t.nr:"Auftrag")+" gelöscht"); closeDrawer(); }
+  try{ const {data:fl}=await S.sb.from("anhaenge").select("pfad").eq("auftrag_id",o.id); if(fl&&fl.length) await S.sb.storage.from("anhaenge").remove(fl.map(x=>x.pfad));
+    const {error}=await S.sb.from("auftraege").delete().eq("id",o.id); if(error) throw error; S.tickets=S.tickets.filter(x=>x.id!==o.id); afterData(); toast((t?t.nr:"Auftrag")+" gelöscht"); closeDrawer(); }
   catch(e){ $("#tErr").textContent=errMsg(e); }
 }
 async function deleteExamples(){
@@ -989,6 +1055,8 @@ document.addEventListener("click",e=>{
   if(t.closest("#rCancel")){ $("#rPanel").hidden=true; return; }
   const tpl=t.closest("[data-tpl]"); if(tpl&&S.open){ const tk=S.tickets.find(x=>x.id===S.open.id); if(tk){ const r=$("#rText"); r.value=REPLY_TPL[tpl.dataset.tpl].t(tk); r.focus(); r.setSelectionRange(r.value.length,r.value.length); } return; }
   if(t.closest("#rSend")){ sendReply(); return; }
+  const ao=t.closest("[data-aopen]"); if(ao){ openAnh(ao.dataset.aopen,ao.dataset.aname); return; }
+  const ad=t.closest("[data-adel]"); if(ad){ if(ad.dataset.sure!=="1"){ ad.dataset.sure="1"; ad.textContent="Wirklich löschen?"; return; } deleteAnh(ad.dataset.adel,ad.dataset.apfad); return; }
   if(t.closest("#delAsk")){ S.open.confirmDel=true; $("#drFoot").innerHTML=footHtml(false,false); return; }
   if(t.closest("#delNo")){ S.open.confirmDel=false; $("#drFoot").innerHTML=footHtml(false,false); return; }
   if(t.closest("#delYes")){ deleteOpen(); return; }
@@ -998,6 +1066,7 @@ document.addEventListener("keydown",e=>{
   if(e.key==="Escape"&&S.open){ closeDrawer(); return; }
   if((e.key==="Enter"||e.key===" ")&&e.target.matches(".card[data-id], tbody tr[data-id]")){ e.preventDefault(); openDrawer(e.target.dataset.id); }
 });
+document.addEventListener("change",e=>{ if(e.target.id==="aFile"&&e.target.files.length){ const fl=[...e.target.files]; e.target.value=""; uploadAnh(fl); } });
 document.addEventListener("submit",e=>{ if(e.target.id==="tForm"){ e.preventDefault(); if(S.canWrite!==false) saveDrawer(); } });
 // Drag & Drop im Board
 let dragId=null;
@@ -1036,6 +1105,7 @@ async function loadAll(){
     if(error) throw error;
     all.push(...data); if(data.length<1000) break; from+=1000;
   }
+  await loadAnhCounts();
   S.tickets=all.map(fromDb); S.loaded=true; S.dbMissing=false; afterData();
 }
 function subscribe(){
@@ -1067,8 +1137,9 @@ async function enterApp(session){
   if(qNr){ const t=S.tickets.find(x=>x.nr===qNr); if(t) openDrawer(t.id); history.replaceState(null,"",location.pathname+location.hash); }
   // Startpasswort muss beim ersten Anmelden ersetzt werden
   try{
-    const {data:me}=await S.sb.from("admins").select("passwort_geaendert,mail_bei_neu").eq("user_id",session.user.id).maybeSingle();
+    const {data:me}=await S.sb.from("admins").select("passwort_geaendert,mail_bei_neu,erinnerung").eq("user_id",session.user.id).maybeSingle();
     if(me && me.mail_bei_neu===false) S.me.mailNeu=false;
+    if(me && me.erinnerung===false) S.me.erinnerung=false;
     if(S.recovery){ S.recovery=false; openPw(true,true); }
     else if(me && me.passwort_geaendert===false) openPw(true);
   }catch(_){}
@@ -1127,7 +1198,7 @@ $("#lForgot").addEventListener("click",async()=>{
 // ---------- Team ----------
 async function loadTeam(){
   try{
-    const {data,error}=await S.sb.from("team").select("id,name,email,aktiv").order("name");
+    const {data,error}=await S.sb.from("team").select("id,name,email,aktiv,erinnerung").order("name");
     if(error) throw error;
     S.team=data||[];
   }catch(_){ S.team=[]; }
@@ -1146,6 +1217,7 @@ function dlg(html){
 function teamHtml(){
   return S.team.length? S.team.slice().sort((a,b)=>a.name.localeCompare(b.name,"de")).map(p=>
     '<li class="'+(p.aktiv?'':'off')+'"><div class="tn"><b>'+esc(p.name)+(p.aktiv?'':' · inaktiv')+'</b><span>'+esc(p.email)+'</span></div>'+
+    '<button type="button" class="btn small" data-terin="'+esc(p.id)+'" title="Tägliche Erinnerung an zugewiesene offene Aufträge">Erinnerung: '+(p.erinnerung===false?'aus':'an')+'</button>'+
     '<button type="button" class="btn small" data-tact="'+esc(p.id)+'">'+(p.aktiv?'Deaktivieren':'Aktivieren')+'</button>'+
     '<button type="button" class="btn small danger" data-tdel="'+esc(p.id)+'">Entfernen</button></li>').join("")
     : '<li><div class="tn"><span>Noch niemand eingetragen.</span></div></li>';
@@ -1172,8 +1244,11 @@ function openTeam(){
     await loadTeam(); $("#tlist").innerHTML=teamHtml(); $("#taName").value=""; $("#taMail").value=""; $("#taName").focus(); toast(name+" hinzugefügt");
   });
   d.querySelector("#tlist").addEventListener("click",async e=>{
-    const a=e.target.closest("[data-tact]"), x=e.target.closest("[data-tdel]");
-    if(a){ const p=S.team.find(q=>q.id===a.dataset.tact); if(!p) return;
+    const a=e.target.closest("[data-tact]"), x=e.target.closest("[data-tdel]"), ri=e.target.closest("[data-terin]");
+    if(ri){ const p=S.team.find(q=>q.id===ri.dataset.terin); if(!p) return;
+      const {error}=await S.sb.from("team").update({erinnerung:p.erinnerung===false}).eq("id",p.id);
+      if(error){ $("#taErr").textContent=errMsg(error); return; } }
+    else if(a){ const p=S.team.find(q=>q.id===a.dataset.tact); if(!p) return;
       const {error}=await S.sb.from("team").update({aktiv:!p.aktiv}).eq("id",p.id);
       if(error){ $("#taErr").textContent=errMsg(error); return; } }
     else if(x){
@@ -1241,6 +1316,7 @@ async function openPush(){
     '<div class="pstate'+(on?' on':'')+'"><span class="dot"></span>Push auf diesem Gerät: '+(on?'aktiv':'aus')+'</div>'+geraet+
     '<p class="pinfo">Aktive Geräte: '+(abos&&abos.length?abos.map(a=>esc(a.geraet||"Gerät")).join(", "):'keine')+'</p>'+
     '<label class="chk"><input type="checkbox" id="pMail"'+(S.me.mailNeu?' checked':'')+'> Bei neuen Aufträgen zusätzlich eine E-Mail an mich</label>'+
+    '<label class="chk"><input type="checkbox" id="pErin"'+(S.me.erinnerung?' checked':'')+'> Montags bis freitags morgens: Erinnerung an offene Aufträge</label>'+
     '<p class="pinfo">Zugewiesene Aufträge kommen immer per E-Mail.</p>'+
     '<div class="err" id="pErr" role="alert"></div>'+
     '<div class="row2"><button class="btn" type="button" id="pTest">Test senden</button><button class="btn" type="button" data-dlgclose>Schließen</button></div>');
@@ -1250,6 +1326,11 @@ async function openPush(){
     try{ if(on){ await pushDisable(); toast("Push auf diesem Gerät ausgeschaltet"); } else { await pushEnable(); toast("Push auf diesem Gerät aktiviert"); } openPush(); }
     catch(e){ tg.disabled=false; const m=(e&&e.message)||"";
       $("#pErr").textContent=m==="blockiert"?"Mitteilungen wurden im Browser abgelehnt.":m==="abgebrochen"?"Bitte die Nachfrage des Browsers mit „Erlauben“ bestätigen.":"Aktivieren hat nicht geklappt. Bitte später erneut versuchen."; }
+  });
+  d.querySelector("#pErin").addEventListener("change",async e=>{
+    const v=e.target.checked; const {error}=await S.sb.rpc("erinnerung_setzen",{p_an:v});
+    if(error){ e.target.checked=!v; $("#pErr").textContent=errMsg(error); return; }
+    S.me.erinnerung=v; toast(v?"Tägliche Erinnerung: an":"Tägliche Erinnerung: aus");
   });
   d.querySelector("#pMail").addEventListener("change",async e=>{
     const v=e.target.checked; const {error}=await S.sb.rpc("mail_bei_neu_setzen",{p_an:v});
