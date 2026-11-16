@@ -268,10 +268,11 @@ body{font-size:14px;min-height:100vh}
 .pwbox .row2{display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap}
 .who{flex-wrap:wrap;justify-content:flex-end}
 .pwbox .login{max-height:calc(100vh - 32px);overflow:auto}
-.pwbox .login.wide{width:min(560px,100%)}
+.pwbox .login.wide{width:min(660px,100%);max-width:none}
 .login label.chk{display:flex;font-weight:400}
 .tlist{display:grid;gap:6px;margin:0;padding:0;list-style:none}
-.tlist li{display:flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:10px;padding:8px 10px;flex-wrap:wrap}
+.tlist li{display:flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:10px;padding:8px 10px;flex-wrap:wrap}
+.tlist .btn.small{font-size:12px;padding:5px 10px}
 .tlist .tn{flex:1;min-width:160px}
 .tlist .tn b{display:block}
 .tlist .tn span{font-size:12.5px;color:var(--muted);overflow-wrap:anywhere}
@@ -1138,7 +1139,7 @@ function showLogin(msg){
 async function enterApp(session){
   const {data:isAdmin,error}=await S.sb.rpc("ist_admin");
   if(error||!isAdmin){ await S.sb.auth.signOut(); showLogin(error?errMsg(error):"Dieses Konto ist nicht als Admin freigeschaltet."); return; }
-  S.me={id:session.user.email,name:"",mailNeu:true};
+  S.me={id:session.user.email,name:"",mailNeu:true,erinnerung:true};
   await loadTeam();
   $("#whoMail").textContent=session.user.email;
   $("#loginView").hidden=true; $("#appView").hidden=false;
