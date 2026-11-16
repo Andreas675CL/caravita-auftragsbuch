@@ -95,7 +95,10 @@ legend{font-weight:700;font-size:14px;padding:0;margin-bottom:6px}
 .done p{margin:0;color:var(--muted);max-width:52ch}
 .foot{color:var(--muted);font-size:12.5px;text-align:center}
 .privacy{font-size:12.5px;color:var(--muted);border-left:3px solid var(--brand);padding-left:10px}
-.files{display:grid;gap:8px}
+.files{display:grid;gap:8px;border:2px dashed transparent;border-radius:12px;padding:6px;margin:-8px}
+.files.drag{border-color:var(--accent);background:var(--accent-soft)}
+.dropnote{font-size:13px;color:var(--muted)}
+@media (hover:none){.dropnote{display:none}}
 .files .flbl{font-weight:700;font-size:14px}
 .files .flbl .opt{font-weight:400;color:var(--muted)}
 .fpick{display:inline-flex;align-items:center;gap:8px;justify-self:start;border:1px dashed var(--accent);color:var(--accent);background:var(--accent-soft);border-radius:999px;padding:9px 16px;font-weight:700;font-size:14px;cursor:pointer}
@@ -154,6 +157,7 @@ legend{font-weight:700;font-size:14px;padding:0;margin-bottom:6px}
     <div class="files">
       <span class="flbl">Dateien <span class="opt">(optional)</span></span>
       <label class="fpick" for="dateien"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5 12.5 20a5.5 5.5 0 0 1-7.8-7.8l8.5-8.5a3.7 3.7 0 0 1 5.2 5.2l-8.5 8.5a1.8 1.8 0 0 1-2.6-2.6l7.8-7.8"/></svg>Foto oder Dokument anhängen<input type="file" id="dateien" multiple accept="image/*,.heic,.heif,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv"></label>
+      <span class="dropnote">… oder Dateien einfach hierher ziehen.</span>
       <ul class="flist" id="flist"></ul>
       <span class="hint">Bis zu 5 Dateien, je höchstens 10 MB (Fotos, PDF, Word, Excel).</span>
     </div>
@@ -209,18 +213,29 @@ const escH = t => String(t).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"
 function renderFiles(){
   $("#flist").innerHTML = files.map((f,i)=>'<li><span class="fn">'+escH(f.name)+'</span><span class="fs">'+fmtSize(f.size)+'</span><button type="button" data-rm="'+i+'" aria-label="'+escH(f.name)+' entfernen">×</button></li>').join("");
 }
-$("#dateien").addEventListener("change", e=>{
+function addFiles(list){
   $("#err").textContent = "";
   const msgs = [];
-  for(const f of e.target.files){
+  for(const f of list){
     if(files.length >= MAX_FILES){ msgs.push("Höchstens "+MAX_FILES+" Dateien."); break; }
     if(!typOf(f)){ msgs.push(f.name+": Dateityp nicht erlaubt."); continue; }
     if(f.size > MAX_SIZE){ msgs.push(f.name+": größer als 10 MB."); continue; }
     files.push(f);
   }
-  e.target.value = ""; renderFiles();
+  renderFiles();
   if(msgs.length) $("#err").textContent = msgs.join(" ");
-});
+}
+$("#dateien").addEventListener("change", e=>{ addFiles([...e.target.files]); e.target.value = ""; });
+// Drag & Drop: Dateien auf das Formular ziehen
+const hasFiles = e => e.dataTransfer && [...e.dataTransfer.types].includes("Files");
+let dragDepth = 0;
+$("#form").addEventListener("dragenter", e=>{ if(!hasFiles(e)) return; e.preventDefault(); dragDepth++; $(".files").classList.add("drag"); });
+$("#form").addEventListener("dragover", e=>{ if(!hasFiles(e)) return; e.preventDefault(); e.dataTransfer.dropEffect="copy"; });
+$("#form").addEventListener("dragleave", e=>{ if(!hasFiles(e)) return; if(--dragDepth<=0){ dragDepth=0; $(".files").classList.remove("drag"); } });
+$("#form").addEventListener("drop", e=>{ if(!hasFiles(e)) return; e.preventDefault(); dragDepth=0; $(".files").classList.remove("drag"); addFiles([...e.dataTransfer.files]); });
+// Daneben fallengelassene Dateien nicht im Browser öffnen
+window.addEventListener("dragover", e=>{ if(hasFiles(e)) e.preventDefault(); });
+window.addEventListener("drop", e=>{ if(hasFiles(e)) e.preventDefault(); });
 $("#flist").addEventListener("click", e=>{ const b=e.target.closest("[data-rm]"); if(b){ files.splice(+b.dataset.rm,1); renderFiles(); } });
 async function uploadFiles(nr, email){
   let ok = 0;
